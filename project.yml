@@ -1,0 +1,21 @@
+parameters: {}
+environment: {}
+packages:
+    - name: parkmaster
+      shared: false
+      environment: {}
+      parameters: {}
+      annotations: {}
+      functions:
+        - name: refresh-waits
+          binary: false
+          main: main
+          runtime: python:3.9
+          web: true
+          webSecure: false
+          parameters: {}
+          environment:
+            FIREBASE_PROJECT_ID: "${FIREBASE_PROJECT_ID}"
+            FIREBASE_SERVICE_ACCOUNT_KEY: "${FIREBASE_SERVICE_ACCOUNT_KEY}"
+          annotations: {}
+          limits: {}

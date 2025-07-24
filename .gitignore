@@ -1,0 +1,25 @@
+.nimbella
+.deployed
+__deployer__.zip
+__pycache__/
+node_modules
+package-lock.json
+.DS_Store
+
+# Environment files with credentials
+.env
+.env.local
+.env.production
+.env.development
+
+# Firebase credentials
+firebase-service-account.json
+*service-account*.json
+
+# Any files containing credentials
+*credentials*
+*secrets*
+
+# Logs that might contain sensitive data
+*.log
+logs/
