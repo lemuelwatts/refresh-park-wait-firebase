@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import requests
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -34,9 +34,9 @@ def fetch_park_data(park_id: str):
     return data
 
 def process_ride(ride: dict) -> dict:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     last = ride.get('last_updated')
-    last_api = datetime.utcfromtimestamp(last) if isinstance(last, (int, float)) else now
+    last_api = datetime.fromtimestamp(last, tz=timezone.utc) if isinstance(last, (int, float)) else now
     return {
         'name': ride.get('name', 'Unknown Ride'),
         'wait_time': int(ride.get('wait_time')) if isinstance(ride.get('wait_time'), (int, float)) else 0,
@@ -45,9 +45,45 @@ def process_ride(ride: dict) -> dict:
         'updated_at': now,
     }
 
+def get_existing_rides(park_id: str) -> dict:
+    """Get all existing rides for a park."""
+    rides_ref = db.collection('parks').document(park_id).collection('rides')
+    docs = rides_ref.stream()
+    existing = {}
+    for doc in docs:
+        existing[doc.id] = doc.to_dict()
+    return existing
+
+def rides_data_changed(existing_data: dict, new_data: dict) -> bool:
+    """Check if ride data has meaningfully changed."""
+    if not existing_data:
+        return True
+    
+    # Compare key fields that matter for wait times
+    key_fields = ['wait_time', 'is_open', 'name']
+    for field in key_fields:
+        if existing_data.get(field) != new_data.get(field):
+            return True
+    
+    return False
+
 def save_rides_batch(park_id: str, rides_data: list):
-    """Save multiple rides in a single batch operation."""
+    """Save multiple rides in a single batch operation, only if data changed."""
     if not rides_data:
+        return 0
+    
+    # Get existing data to compare
+    existing_rides = get_existing_rides(park_id)
+    
+    # Filter to only rides that need updating
+    rides_to_update = []
+    for ride_id, ride_data in rides_data:
+        existing = existing_rides.get(ride_id, {})
+        if rides_data_changed(existing, ride_data):
+            rides_to_update.append((ride_id, ride_data))
+    
+    if not rides_to_update:
+        print(f"✓ No changes needed for park {park_id}")
         return 0
     
     # Firestore batch can handle up to 500 operations
@@ -55,7 +91,7 @@ def save_rides_batch(park_id: str, rides_data: list):
     batch_count = 0
     total_saved = 0
     
-    for ride_id, ride_data in rides_data:
+    for ride_id, ride_data in rides_to_update:
         doc_ref = db.collection('parks').document(park_id).collection('rides').document(ride_id)
         batch.set(doc_ref, ride_data)
         batch_count += 1
@@ -96,8 +132,8 @@ def update_park_waits(park_id: str):
     # Save all rides in batch(es)
     saved_count = save_rides_batch(park_id, rides_to_save)
     
-    print(f"✔️ {count} rides processed, {saved_count} saved for park {park_id}")
-    return {'park_id': park_id, 'updated_rides': count, 'saved_rides': saved_count, 'timestamp': datetime.utcnow().isoformat()}
+    print(f"✔️ {count} rides processed, {saved_count} actually updated for park {park_id}")
+    return {'park_id': park_id, 'updated_rides': count, 'saved_rides': saved_count, 'timestamp': datetime.now(timezone.utc).isoformat()}
 
 def update_all_parks():
     results = []
@@ -123,7 +159,7 @@ def update_all_parks():
         'parks_failed': len(failed_parks),
         'results': results,
         'failures': failed_parks,
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     }
 
 def update_park_waits_http(event):
